@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>衍 的小桌面 · Demo v0.5</title>
+<meta name="description" content="衍的个人网站 v3 设计验证 Demo：单屏满幅插画 + 物件悬停高亮 + 钻取卡片">
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<style>
+  /* 手写体槽位：自托管文件 > local() 别名 > 免费手写回退 > 系统栈 */
+  @font-face{
+    font-family:"WzyHand";
+    src:local("AaShuMoShiHua"),local("AaShuiMoShiHua"),local("Aa Shui Mo Shi Hua"),local("AaShuimoShihua"),local("Aa水墨诗画"),
+       url("assets/fonts/wzy-hand.woff2") format("woff2"),
+       url("assets/fonts/wzy-hand.ttf") format("truetype");
+    font-display:swap;
+  }
+  :root{
+    --orange:#F5821F;
+    --orange-2:#FF8A3D;
+    --cream:#FFF6EC;
+    --paper:#FFFDF6;
+    --ink:#3B2A20;
+    --muted:#8A6F5C;
+    --green:#7FB77E;
+    --peach:#E8A87C;
+    --brick:#C97B63;
+    --font-hand:"WzyHand","Ma Shan Zheng","KaiTi","STKaiti","楷体",cursive;
+    --font-round:var(--font-hand);
+    --font-body:var(--font-hand);
+    --spring:cubic-bezier(.2,1.4,.4,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--cream);color:var(--ink);font-family:var(--font-body);font-weight:400;line-height:1.7}
+  h1,h3,h4{font-weight:400}
+  button{font-family:inherit;color:inherit}
+  [hidden]{display:none!important}
+
+  /* ---------- 满幅舞台 ---------- */
+  .stage{position:fixed;inset:0;overflow:hidden}
+  .blur-layer{position:absolute;inset:0;transition:filter .35s ease,transform .35s ease}
+  .stage.blurred .blur-layer{filter:blur(10px);transform:scale(1.04)}
+  .stage.blurred .mail-fab{opacity:.35}
+  .stage>img.bg,.blur-layer>img.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 62%;user-select:none;-webkit-user-drag:none}
+
+  /* ---------- 热区（无可见选中框） ---------- */
+  .hs{position:absolute;background:transparent;border:none;cursor:pointer;border-radius:26px;z-index:5}
+  .hs:focus{outline:none}
+
+  /* ---------- 物件图层：悬停放大 1.12× + 6px 白亮描边光晕 ---------- */
+  .obj-layer{
+    position:absolute;pointer-events:none;
+    transition:transform .46s cubic-bezier(.34,1.3,.5,1);
+    will-change:transform;
+  }
+  .obj-layer>img{position:absolute;left:0;top:0;width:100%;height:100%;display:block}
+  .obj-layer .ol-glow{
+    opacity:0;
+    filter:url(#f-ring) drop-shadow(0 0 7px rgba(255,255,255,.75));
+    transition:opacity .26s ease;
+  }
+  .obj-layer .ol-art{opacity:1}
+  .obj-layer.on{transform:scale(1.12)}
+  .obj-layer.on .ol-glow{opacity:1}
+  .svg-defs{position:absolute;width:0;height:0;overflow:hidden}
+
+  /* ---------- 无边框浮现文字（无气泡边框） ---------- */
+  .flabel{
+    --fx:0px;--fy:0px;
+    position:absolute;z-index:30;pointer-events:none;
+    font-family:var(--font-round);
+    font-size:clamp(17px,1.8vw,27px);
+    letter-spacing:.16em;white-space:nowrap;
+    color:#ffffff;
+    text-shadow:0 3px 16px rgba(56,32,12,.85),0 1px 3px rgba(56,32,12,.7);
+    opacity:0;visibility:hidden;
+    transform:translate(var(--fx),var(--fy));
+    transition:opacity .3s ease,transform .46s var(--spring),visibility 0s linear .34s;
+  }
+  .flabel.show{
+    opacity:1;visibility:visible;
+    transform:translate(0,0);
+    transition:opacity .28s ease,transform .46s var(--spring),visibility 0s;
+  }
+
+  /* ---------- 草地 hello + 风吹草动 ---------- */
+  .hello-wrap{position:absolute;left:5%;top:8%;max-width:90vw;pointer-events:none;z-index:8}
+  .hello{
+    display:inline-block;
+    font-size:clamp(28px,4.2vw,60px);
+    font-weight:400;font-synthesis:none;
+    letter-spacing:.1em;white-space:nowrap;
+    color:#ffffff;
+    text-shadow:0 4px 22px rgba(58,34,14,.55),0 2px 6px rgba(58,34,14,.4);
+    animation:helloIn .8s var(--spring) both;
+  }
+  @keyframes helloIn{0%{opacity:0;transform:translateY(18px)}100%{opacity:1;transform:none}}
+
+  /* ---------- 右上角留言图标 ---------- */
+  .mail-fab{
+    position:absolute;top:18px;right:18px;z-index:40;
+    width:54px;height:54px;border-radius:50%;
+    background:var(--paper);border:3px solid var(--ink);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:transform .12s ease,background .12s ease;
+  }
+  .mail-fab:hover{transform:rotate(-8deg) scale(1.08)}
+  .mail-fab.active{background:var(--orange);color:var(--paper)}
+  .mail-fab .lic{width:24px;height:24px}
+
+  /* ---------- 钻取卡片 ---------- */
+  .card{
+    position:absolute;z-index:20;
+    width:min(420px,calc(100vw - 32px));
+    max-height:min(72vh,640px);
+    background:var(--paper);
+    border:none;
+    box-shadow:0 8px 28px rgba(59,42,32,.12);
+    border-radius:26px;
+    display:flex;flex-direction:column;
+    animation:cardIn .42s var(--spring);
+  }
+  @keyframes cardIn{0%{opacity:0;scale:.55;rotate:-3deg}100%{opacity:1;scale:1;rotate:0deg}}
+  .card-head{
+    display:flex;align-items:center;gap:10px;
+    padding:14px 16px 10px;
+    border-bottom:3px dashed var(--peach);
+  }
+  .card-head h3{font-family:var(--font-round);font-size:21px;letter-spacing:.04em;flex:1;display:flex;align-items:center;gap:8px}
+  .card-head h3 .lic{width:20px;height:20px;color:var(--orange);flex:none}
+  .icon-btn{
+    width:36px;height:36px;border-radius:50%;flex:none;
+    background:transparent;border:3px solid var(--peach);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:transform .12s ease,background .12s ease;
+  }
+  .icon-btn:hover{transform:scale(1.12);background:var(--cream)}
+  .icon-btn .lic{width:18px;height:18px}
+  .card-body{padding:16px 20px 20px;overflow-y:auto;overscroll-behavior:contain}
+  .card-body.in{animation:bodyIn .32s var(--spring)}
+  .card-body.out{animation:bodyOut .14s ease forwards}
+  @keyframes bodyIn{0%{opacity:0;transform:translateX(26px) scale(.96)}100%{opacity:1;transform:none}}
+  @keyframes bodyOut{to{opacity:0;transform:translateX(-18px) scale(.97)}}
+
+  .todo{color:var(--brick);font-size:.8em;border:2px dashed var(--brick);border-radius:8px;padding:0 6px;margin-left:4px;white-space:nowrap}
+
+  .sub-entry{
+    width:100%;display:flex;align-items:center;gap:10px;
+    background:var(--cream);border:3px solid var(--green);border-radius:18px;
+    padding:10px 16px;margin-top:12px;cursor:pointer;
+    font-family:var(--font-round);font-size:16px;
+    transition:transform .12s ease;
+  }
+  .sub-entry:hover{transform:translateX(6px)}
+  .sub-entry .lic{width:18px;height:18px;margin-left:auto}
+
+  .photo-slots{display:flex;gap:12px;margin-top:14px}
+  .photo-slot{
+    flex:1;min-height:110px;border:3px dashed var(--peach);border-radius:18px;
+    display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;
+    color:var(--muted);font-size:13px;background:var(--cream);
+  }
+  .photo-slot.photo{padding:0;border:none;background:transparent;min-height:0}
+  .photo-slot.photo img{
+    width:100%;height:auto;display:block;
+    border-radius:14px;border:3px solid var(--peach);
+    box-shadow:0 4px 14px rgba(59,42,32,.14);
+  }
+  /* 关于我：真实简介 */
+  .me-intro{font-size:14px;line-height:1.9}
+  .me-intro b{color:var(--orange);font-size:1.15em;margin:0 2px;font-family:var(--font-round)}
+  /* 邮箱 / 微信 */
+  .social-row{cursor:default}
+  .social-row .s-ico{display:flex;flex:none}
+  .social-row .s-ico .lic{width:20px;height:20px;color:var(--orange)}
+  .social-row .s-name{font-family:var(--font-round);font-size:15px;flex:none;min-width:42px}
+  .social-row .s-value{
+    margin-left:auto;font-size:13px;color:var(--muted);
+    word-break:break-all;text-align:right;cursor:pointer;
+    transition:color .15s ease;
+  }
+  .social-row .s-value:hover{color:var(--orange)}
+  .social-row.copied{border-color:var(--green)}
+  .social-row.copied .s-value{color:var(--green);font-weight:bold}
+  .s-tip{color:var(--muted);font-size:12px;margin-top:12px;text-align:center}
+  .mbti-tag{margin-top:14px;text-align:center;font-size:12px;color:var(--muted)}
+  .photo-slot .lic{width:22px;height:22px}
+
+  .hobby-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .hobby-card{background:var(--cream);border:3px solid var(--green);border-radius:18px;padding:12px 14px;transition:transform .12s ease}
+  .hobby-card:hover{transform:translateY(-4px) rotate(-1deg)}
+  .hobby-card.empty{border-style:dashed;border-color:var(--peach);color:var(--muted)}
+  .hobby-card .h-ico{font-size:24px}
+  .hobby-card .h-name{font-family:var(--font-round);font-size:16px}
+  .hobby-card .h-desc{font-size:12px;color:var(--muted)}
+
+  .sandwich{margin:4px auto 0;max-width:320px}
+  .bread{background:#E9C08A;border:3px solid var(--ink);border-radius:60px 60px 12px 12px;height:26px;margin-bottom:-5px;position:relative;z-index:1}
+  .bread.bottom{border-radius:12px 12px 60px 60px;margin:-5px 0 0}
+  .layer{
+    width:100%;border:3px solid var(--ink);border-radius:12px;background:var(--cream);
+    padding:7px 16px;margin:-3px 8px;position:relative;
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    font-family:var(--font-round);font-size:15px;cursor:pointer;
+    transition:transform .12s ease;
+  }
+  .layer:hover{transform:scale(1.04)}
+  .layer.empty{border-style:dashed;color:var(--muted);background:transparent;cursor:default}
+  .layer .lv{font-size:11px;border-radius:999px;padding:1px 10px;color:var(--paper);font-family:var(--font-body)}
+  .lv.l1{background:var(--green)} .lv.l2{background:var(--orange)} .lv.l3{background:var(--brick)}
+  .detail-tag{display:inline-block;border-radius:999px;padding:2px 14px;color:var(--paper);font-size:13px;margin-bottom:8px}
+
+  /* 盲盒 */
+  .bb-stage{text-align:center;padding:4px 0}
+  .bb-basket{font-size:64px;line-height:1;display:inline-block}
+  .bb-basket.shaking{animation:shake .6s ease}
+  @keyframes shake{0%,100%{transform:translateX(0) rotate(0)}20%{transform:translateX(-7px) rotate(-5deg)}40%{transform:translateX(7px) rotate(5deg)}60%{transform:translateX(-5px) rotate(-4deg)}80%{transform:translateX(5px) rotate(4deg)}}
+  .bb-fruit{
+    font-size:52px;cursor:pointer;background:var(--cream);
+    border:4px solid var(--peach);border-radius:50%;
+    width:96px;height:96px;line-height:88px;display:inline-block;
+    animation:pop .38s var(--spring);transition:transform .12s ease;
+  }
+  .bb-fruit:hover{transform:scale(1.1) rotate(-8deg)}
+  @keyframes pop{0%{scale:.2;opacity:0}70%{scale:1.15}100%{scale:1;opacity:1}}
+  .bb-tip{color:var(--muted);font-size:13px;margin-top:8px;font-family:var(--font-round)}
+  .bb-actions{margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--orange);color:var(--paper);border:none;
+    border-radius:999px;padding:9px 22px;
+    font-family:var(--font-round);font-size:15px;cursor:pointer;
+    transition:transform .12s ease,background .12s ease;
+  }
+  .btn:hover{transform:translateY(-2px) scale(1.04);background:var(--orange-2)}
+  .btn:active{transform:scale(.94)}
+  .btn .lic{width:17px;height:17px}
+  .btn.ghost{background:transparent;color:var(--ink);border:3px solid var(--peach);padding:6px 19px}
+  .btn.ghost:hover{background:var(--cream)}
+  .note-center{
+    min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;gap:8px;animation:pop .3s var(--spring);
+  }
+  .note-center p{font-size:17px;letter-spacing:.06em}
+
+  .mbti-letters{font-family:var(--font-round);font-size:46px;letter-spacing:.18em;color:var(--orange);text-align:center;margin:2px 0 8px}
+
+  /* 留言 */
+  .msg-form{display:grid;gap:10px}
+  .msg-form input,.msg-form textarea{
+    background:var(--cream);border:3px solid var(--peach);border-radius:14px;
+    padding:8px 14px;font-size:14px;color:var(--ink);font-family:var(--font-body);resize:none;
+  }
+  .msg-form input:focus,.msg-form textarea:focus{outline:3px solid var(--orange-2);outline-offset:1px}
+  .msg-form .row{display:flex;gap:10px}
+  .msg-form .row input{flex:1;min-width:0}
+  .msg-list{list-style:none;margin-top:14px;display:grid;gap:10px}
+  .msg-item{background:var(--cream);border:3px solid var(--peach);border-radius:16px;padding:10px 14px;animation:pop .3s var(--spring)}
+  .msg-item .m-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+  .msg-item .m-nick{font-family:var(--font-round);color:var(--orange);font-size:15px}
+  .msg-item .m-time{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px}
+  .msg-item .m-time .lic{width:11px;height:11px}
+  .msg-item .m-text{font-size:13px;margin-top:2px}
+
+  .social-list{display:grid;gap:10px}
+  .social-row{
+    display:flex;align-items:center;gap:12px;
+    background:var(--cream);border:3px solid var(--peach);border-radius:16px;
+    padding:10px 16px;font-family:var(--font-round);font-size:15px;
+    transition:transform .12s ease;
+  }
+  .social-row:hover{transform:translateX(6px)}
+  .social-row .lic{width:20px;height:20px;color:var(--orange)}
+
+  /* 角落 demo 标签 */
+  .demo-tag{
+    position:absolute;left:14px;bottom:12px;z-index:15;
+    background:rgba(59,42,32,.82);color:var(--cream);
+    font-size:11px;letter-spacing:.05em;
+    border-radius:999px;padding:4px 14px;pointer-events:none;
+  }
+  .demo-tag b{color:var(--orange-2)}
+  .pan-hint{
+    position:absolute;left:50%;bottom:52px;transform:translateX(-50%);z-index:15;
+    background:rgba(59,42,32,.82);color:var(--cream);
+    font-family:var(--font-round);font-size:13px;letter-spacing:.08em;
+    border-radius:999px;padding:6px 18px;pointer-events:none;
+    animation:heroFloat 2.6s ease-in-out infinite;
+  }
+  .pan-hint.gone{display:none}
+  .stage.grabbable{cursor:grab}
+  .stage.grabbable:active{cursor:grabbing}
+
+  .lic{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  @media (max-width:640px){
+    .hello-wrap{left:6%;top:6%}
+    .hello{font-size:clamp(22px,7.5vw,40px)}
+    .mail-fab{width:46px;height:46px;top:12px;right:12px}
+    .flabel{font-size:clamp(15px,4.8vw,23px)}
+    .card{max-height:64vh}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="blur-layer" id="blurLayer">
+    <img class="bg" id="bg" src="assets/picnic-scene.png" alt="野餐插画：吉他、草帽、三明治与装满水果的野餐篮摆在橙白格纹餐布上">
+    <div class="hello-wrap" aria-label="欢迎来到我的个人网页">
+      <span class="hello">欢迎来到我的个人网页</span>
+    </div>
+  </div>
+  <!-- 白亮描边滤镜：alpha 膨胀 5.4px（×1.12 放大后 ≈ 6px）→ 纯白剪影 -->
+  <svg class="svg-defs" aria-hidden="true" focusable="false">
+    <defs>
+      <filter id="f-ring" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB">
+        <feMorphology in="SourceAlpha" operator="dilate" radius="5.4" result="d"/>
+        <feGaussianBlur in="d" stdDeviation="0.9" result="ds"/>
+        <feFlood flood-color="#ffffff" flood-opacity="1" result="w"/>
+        <feComposite in="w" in2="ds" operator="in"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <div id="hotspots"></div>
+
+  <button class="mail-fab" id="mailFab" aria-label="留言板"></button>
+
+  <div class="card" id="card" hidden>
+    <div class="card-head">
+      <button class="icon-btn" id="backBtn" aria-label="返回上一级" hidden></button>
+      <h3 id="cardTitle"></h3>
+      <button class="icon-btn" id="closeBtn" aria-label="收起卡片"></button>
+    </div>
+    <div class="card-body" id="cardBody"></div>
+  </div>
+
+  <div class="demo-tag"><b>DEMO v0.5</b> · 文案已替换为真实资料 · 留言为本地演示</div>
+  <div class="pan-hint" id="panHint" hidden>← 左右拖动画布 · 看全整张桌面 →</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================= lucide 内联图标（开发对话 1:1 映射 lucide 组件） ================= */
+  var LIC = {
+    x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    "arrow-left":'<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+    mail:'<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+    "chevron-right":'<path d="m9 18 6-6-6-6"/>',
+    send:'<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5 5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5 5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5 5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5 5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>',
+    "rotate-ccw":'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+    github:'<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
+    tv:'<rect width="20" height="15" x="2" y="7" rx="2"/><polyline points="17 2 12 7 7 2"/>',
+    clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    chat:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    camera:'<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>'
+  };
+  function icon(name){
+    return '<svg class="lic" viewBox="0 0 24 24" aria-hidden="true">'+LIC[name]+'</svg>';
+  }
+
+  /* ================= 数据（随笔为用户 2026-10-12 提供的真实内容） ================= */
+  var NOTES = [
+    { id:"n1", fruit:"🍊", lines:["看到这句去喝水","看到这句去喝水","看到这句去喝水"] },
+    { id:"n2", fruit:"🍓", lines:["原来你也玩原神"] },
+    { id:"n3", fruit:"🍎", lines:["(⊙⊙)这个网页做的有点幼稚啊老铁"] }
+  ];
+  var HOBBIES = [
+    { ico:"🎸", name:"吉他", desc:"因为帅，但是学艺不精。", empty:false },
+    { ico:"🎨", name:"绘画", desc:"画出自己的想法很有意思。", empty:false },
+    { ico:"📷", name:"摄影", desc:"拍出好看的照片简直神了，仅为兴趣，没有系统学习。", empty:false },
+    { ico:"🕹️", name:"电子竞技", desc:"放松闲暇时间的用脑时刻，重点是和好友一起玩。", empty:false }
+  ];
+  var SKILLS = [
+    { name:"Java", lv:"学习中", cls:"l2", desc:"(待填) 一句话说明：用到什么程度、做过什么小东西。" },
+    { name:"Python", lv:"熟悉", cls:"l1", desc:"(待填) 一句话说明。" },
+    { name:"MySQL", lv:"学习中", cls:"l2", desc:"(待填) 一句话说明。" }
+  ];
+  var SOCIALS = [
+    { icon:"mail", name:"邮箱", value:"3175723297@qq.com" },
+    { icon:"chat", name:"微信", value:"BDYQ45" }
+  ];
+
+  /* 底图真实像素尺寸 = assets/picnic-scene.png 的 1248×832（cover 裁切由 JS 换算） */
+  var IMG_W = 1248, IMG_H = 832;
+  /* 热区：底图坐标；z 为前后层次（帽子压在吉他之上，葡萄最前），避免大热区抢走悬停 */
+  var SPOTS = [
+    { key:"guitar",   label:"兴趣爱好",    x:17,  y:415, w:627, h:345, z:5 },
+    { key:"basket",   label:"随笔盲盒",    x:723, y:197, w:521, h:410, z:6 },
+    { key:"sandwich", label:"技能 · 学习", x:868, y:596, w:311, h:218, z:7 },
+    { key:"hat",      label:"关于我",      x:310, y:600, w:402, h:230, z:8 },
+    { key:"grape",    label:"MBTI",        x:796, y:728, w:64,  h:65,  z:9 }   /* 彩蛋：无悬停提示，点击才出卡片 */
+  ];
+
+  /* 物件图层（分层素材）：x/y/w/h 为底图 1248×832 坐标系下整块素材的落位，
+     ox/oy 为 transform-origin（素材实心部分的 alpha 质心，放大时绕它生长），
+     a 为文字锚点——按"放大 1.12× 后的真实轮廓极值点"算出，保证文字贴着物件且不被压住 */
+  var LAYERS = {
+    guitar:   { src:"assets/obj-guitar.png",   x:17,  y:368, w:773.5, h:396.4, ox:37.13, oy:53.49, z:1, a:[333.7, 492.1] },
+    basket:   { src:"assets/obj-basket.png",   x:723, y:194, w:523.5, h:424.0, ox:53.59, oy:57.46, z:2, a:[689.9, 397.7] },
+    sandwich: { src:"assets/obj-sandwich.png", x:866, y:576, w:315.5, h:239.8, ox:50.20, oy:56.77, z:3, a:[849.8, 582.6] },
+    hat:      { src:"assets/obj-hat.png",      x:308, y:392, w:413.9, h:440.4, ox:50.08, oy:76.23, z:4, a:[735.1, 714.1] }
+  };
+
+  /* 文字浮现方位：吉他→上方，帽子→右侧，篮子→左侧，三明治→左上
+     ax/ay 对齐系数(-1 末 / 0 首 / -0.5 居中)；px/py 与物件的间距(屏幕px)；fx/fy 浮出位移 */
+  var LABEL_DIR = {
+    guitar:   { ax:-0.5, ay:-1,   px:0,   py:-16, fx:0,   fy:16 },
+    hat:      { ax:0,    ay:-0.5, px:22,  py:0,   fx:-20, fy:0 },
+    basket:   { ax:-1,   ay:-0.5, px:-22, py:0,   fx:20,  fy:0 },
+    sandwich: { ax:-1,   ay:-1,   px:-16, py:-14, fx:14,  fy:14 }
+  };
+
+  function esc(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  /* ================= 洗牌袋算法（PRD §6.1.3） ================= */
+  var recent = [];
+  var BAG_N = Math.min(2, NOTES.length - 1);
+  function drawNote(){
+    var pool = NOTES.filter(function(n){ return recent.indexOf(n.id) === -1; });
+    if(!pool.length){ recent = []; pool = NOTES.slice(); }
+    var pick = pool[Math.floor(Math.random() * pool.length)];
+    recent.push(pick.id);
+    if(recent.length > BAG_N) recent.shift();
+    return pick;
+  }
+
+  /* ================= 热区布局（cover 裁切换算） ================= */
+  var stage = document.getElementById("stage");
+  var bg = document.getElementById("bg");
+  var hsWrap = document.getElementById("hotspots");
+  var rects = {};   // key -> {left,top,width,height} 屏幕坐标
+  var els = {};
+
+  SPOTS.forEach(function(s){
+    var b = document.createElement("button");
+    b.className = "hs";
+    b.setAttribute("data-obj", s.key);
+    b.setAttribute("aria-label", s.label);
+    if(s.z) b.style.zIndex = s.z;
+    hsWrap.appendChild(b);
+    els[s.key] = b;
+  });
+
+  /* ---- 物件图层 + 无边框浮现文字 ---- */
+  var layers = {}, flabels = {};
+  Object.keys(LAYERS).forEach(function(k){
+    var L = LAYERS[k];
+    var d = document.createElement("div");
+    d.className = "obj-layer";
+    d.setAttribute("data-obj", k);
+    d.style.transformOrigin = L.ox + "% " + L.oy + "%";
+    d.style.zIndex = L.z;
+    d.innerHTML = '<img class="ol-glow" src="' + L.src + '" alt="" aria-hidden="true">'
+                + '<img class="ol-art"  src="' + L.src + '" alt="" aria-hidden="true">';
+    /* 放进 blur-layer：卡片打开时物件与背景一起虚化 */
+    blurLayer.appendChild(d);
+    layers[k] = d;
+
+    var f = document.createElement("div");
+    f.className = "flabel";
+    f.setAttribute("aria-hidden", "true");
+    stage.appendChild(f);
+    flabels[k] = f;
+  });
+
+  var pan = { x:0.5, y:0.62 };
+  var panHint = document.getElementById("panHint");
+  function cover(){
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var scale = Math.max(W / IMG_W, H / IMG_H);
+    return { W:W, H:H, scale:scale,
+             ox:-(IMG_W * scale - W) * pan.x,
+             oy:-(IMG_H * scale - H) * pan.y };
+  }
+  function layout(){
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var c = cover(), scale = c.scale, ox = c.ox, oy = c.oy;
+    var rw = IMG_W * scale, rh = IMG_H * scale;
+    bg.style.objectPosition = (pan.x * 100) + "% " + (pan.y * 100) + "%";
+    var canPan = rw > W + 4;
+    stage.classList.toggle("grabbable", canPan);
+    panHint.hidden = !(canPan && W < H) || panHint.classList.contains("gone");
+    SPOTS.forEach(function(s){
+      var r = { left: ox + s.x * scale, top: oy + s.y * scale, width: s.w * scale, height: s.h * scale };
+      /* 青提等小物件：命中域 ≥44px */
+      if(r.width < 44){ var dx = (44 - r.width) / 2; r.left -= dx; r.width = 44; }
+      if(r.height < 44){ var dy = (44 - r.height) / 2; r.top -= dy; r.height = 44; }
+      rects[s.key] = r;
+      var el = els[s.key];
+      el.style.left = r.left + "px";
+      el.style.top = r.top + "px";
+      el.style.width = r.width + "px";
+      el.style.height = r.height + "px";
+    });
+    Object.keys(LAYERS).forEach(function(k){
+      var L = LAYERS[k], el = layers[k];
+      el.style.left = (ox + L.x * scale) + "px";
+      el.style.top = (oy + L.y * scale) + "px";
+      el.style.width = (L.w * scale) + "px";
+      el.style.height = (L.h * scale) + "px";
+    });
+    placeLabels();
+    if(!card.hidden) placeCard();
+  }
+
+  /* ================= 悬停：物件放大 1.12× + 无边框文字浮现 ================= */
+  var hovered = null;
+
+  function spotMeta(key){ return SPOTS.filter(function(s){ return s.key === key; })[0]; }
+
+  function placeLabels(){
+    var c = cover();
+    Object.keys(LAYERS).forEach(function(k){
+      var f = flabels[k], d = LABEL_DIR[k], a = { x:LAYERS[k].a[0], y:LAYERS[k].a[1] }, meta = spotMeta(k);
+      if(meta) f.textContent = meta.label;
+      var w = f.offsetWidth, h = f.offsetHeight;
+      var left = c.ox + a.x * c.scale + d.px + d.ax * w;
+      var top  = c.oy + a.y * c.scale + d.py + d.ay * h;
+      left = Math.min(Math.max(left, 12), Math.max(12, c.W - w - 12));
+      top  = Math.min(Math.max(top, 12), Math.max(12, c.H - h - 12));
+      f.style.left = left + "px";
+      f.style.top = top + "px";
+      f.style.setProperty("--fx", d.fx + "px");
+      f.style.setProperty("--fy", d.fy + "px");
+    });
+  }
+
+  /* key 为 null 或彩蛋物件（无图层）时，全部收起 */
+  function setHover(key){
+    if(!card.hidden || !key || !LAYERS[key]) key = null;
+    hovered = key;
+    Object.keys(LAYERS).forEach(function(k){
+      var on = (k === key);
+      layers[k].classList.toggle("on", on);
+      layers[k].style.zIndex = on ? 9 : LAYERS[k].z;
+      flabels[k].classList.toggle("show", on);
+    });
+    if(key) placeLabels();
+  }
+
+  /* ================= 钻取卡片 ================= */
+  var card = document.getElementById("card");
+  var cardTitle = document.getElementById("cardTitle");
+  var cardBody = document.getElementById("cardBody");
+  var backBtn = document.getElementById("backBtn");
+  var closeBtn = document.getElementById("closeBtn");
+  var mailFab = document.getElementById("mailFab");
+  mailFab.innerHTML = icon("mail");
+  backBtn.innerHTML = icon("arrow-left");
+  closeBtn.innerHTML = icon("x");
+
+  var view = { obj:null, level:1, sub:null };   // obj: spot key | "mail"
+  var bb = { stage:"idle", note:null };
+
+  function headTitle(){
+    if(view.obj === "mail") return icon("mail") + " 留言板";
+    var m = spotMeta(view.obj);
+    var emo = { hat:"🧢", guitar:"🎸", sandwich:"🥪", basket:"🧺", grape:"🍇" }[view.obj] || "";
+    if(view.level === 2){
+      if(view.obj === "hat") return emo + " 我的邮箱 / 微信";
+      if(view.obj === "sandwich") return emo + " " + esc(SKILLS[view.sub].name);
+      if(view.obj === "basket") return emo + " 随笔盲盒";
+    }
+    return emo + " " + m.label;
+  }
+
+  /* ---- 各视图 body ---- */
+  function bodyHat1(){
+    return '<p class="me-intro">hello 啊，这里是 <b>衍</b>。因为觉得比较帅，就取了这么个名字。<br>'
+      + '一枚计算机专业的大学生，选计算机也是因为感觉挺酷的，实际相处下来有些八字不合。<br>'
+      + '喜欢美食，喜欢和朋友们一起吃美食。最近在南京学习。</p>'
+      + '<div class="photo-slots"><figure class="photo-slot photo"><img src="assets/photos/life-1.jpg" alt="日常随手拍" loading="lazy"></figure>'
+      + '<figure class="photo-slot photo"><img src="assets/photos/life-2.jpg" alt="日常随手拍" loading="lazy"></figure></div>'
+      + '<button class="sub-entry" data-act="drill" data-sub="social">'+icon("chat")+'我的邮箱 / 微信'+icon("chevron-right")+'</button>';
+  }
+  function bodyHat2(){
+    return '<div class="social-list">' + SOCIALS.map(function(s){
+        return '<div class="social-row"><span class="s-ico">'+icon(s.icon)+'</span>'
+          + '<span class="s-name">'+esc(s.name)+'</span>'
+          + '<span class="s-value" title="点一下复制">'+esc(s.value)+'</span></div>';
+      }).join("") + '</div>'
+      + '<p class="s-tip">点一下账号即可复制 · 加好友请说明来意</p>';
+  }
+  function bodyGuitar(){
+    return '<div class="hobby-grid">' + HOBBIES.map(function(h){
+      return '<div class="hobby-card'+(h.empty?' empty':'')+'"><div class="h-ico">'+h.ico+'</div><div class="h-name">'+esc(h.name)+'</div>'
+        + (h.desc?'<div class="h-desc">'+esc(h.desc)+'</div>':'') + '</div>';
+    }).join("") + '</div>';
+  }
+  function bodySandwich1(){
+    return '<div class="sandwich"><div class="bread"></div>'
+      + SKILLS.map(function(k,i){
+          return '<button class="layer'+(k.empty?' empty':'')+'" '+(k.empty?'disabled':'data-act="drill" data-sub="'+i+'"')+'><span>'+esc(k.name)+'</span><span class="lv '+k.cls+'">'+esc(k.lv)+'</span></button>';
+        }).join("")
+      + '<div class="bread bottom"></div></div>';
+  }
+  function bodySandwich2(){
+    var k = SKILLS[view.sub];
+    return '<span class="detail-tag lv '+k.cls+'">'+esc(k.lv)+'</span>'
+      + '<p style="font-size:14px">'+esc(k.desc)+'</p>';
+  }
+  function bodyBasket1(){
+    var s = '<div class="bb-stage">';
+    if(bb.stage === "idle"){
+      s += '<span class="bb-basket">🧺</span><p class="bb-tip">篮子里装着几颗水果，每颗都是一篇随笔。</p>'
+        +  '<div class="bb-actions"><button class="btn" data-act="bb-draw">'+icon("sparkles")+'开篮抽一颗</button></div>';
+    } else if(bb.stage === "shaking"){
+      s += '<span class="bb-basket shaking">🧺</span><p class="bb-tip">抖一抖……</p>';
+    } else {
+      s += '<button class="bb-fruit" data-act="bb-open" aria-label="点开这颗水果">'+bb.note.fruit+'</button>'
+        +  '<p class="bb-tip">抽到一颗 '+bb.note.fruit+'！点开看看。</p>'
+        +  '<div class="bb-actions"><button class="btn ghost" data-act="bb-draw">'+icon("rotate-ccw")+'再抽一颗</button></div>';
+    }
+    return s + '</div>';
+  }
+  function bodyBasket2(){
+    var n = bb.note;
+    return '<div class="note-center">' + n.lines.map(function(p){ return "<p>"+esc(p)+"</p>"; }).join("") + '</div>'
+      + '<div class="bb-actions"><button class="btn" data-act="bb-again">'+icon("rotate-ccw")+'再抽一颗</button>'
+      + '<button class="btn ghost" data-act="bb-reset">'+icon("x")+'放回篮子</button></div>';
+  }
+  function bodyGrape(){
+    return '<div class="mbti-letters">ISFP</div>'
+      + '<p style="text-align:center;font-size:14px">小画家。自己做的计划很容易被自己打乱，但想画的东西、想拍的东西，一直都在。</p>'
+      + '<p class="mbti-tag">🍇 被你找到了 —— 这里是藏在桌角的彩蛋</p>';
+  }
+
+  var msgs = [];
+  function pad(n){ return n < 10 ? "0"+n : ""+n; }
+  function nowStr(){
+    var d = new Date();
+    return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+  }
+  function bodyMail(){
+    return '<form class="msg-form" id="msgForm"><div class="row"><input id="msgNick" type="text" maxlength="20" placeholder="你的昵称" required aria-label="昵称">'
+      + '<button class="btn" type="submit">'+icon("send")+'留下</button></div>'
+      + '<textarea id="msgText" rows="2" maxlength="300" placeholder="想对 衍 说点什么…" required aria-label="留言内容"></textarea></form>'
+      + '<ul class="msg-list" id="msgList">' + msgs.map(function(m){
+          return '<li class="msg-item"><div class="m-head"><span class="m-nick">'+esc(m.nick)+'</span><span class="m-time">'+icon("clock")+esc(m.time)+'</span></div><div class="m-text">'+esc(m.text)+'</div></li>';
+        }).join("") + '</ul>';
+  }
+
+  function bodyHTML(){
+    if(view.obj === "mail") return bodyMail();
+    if(view.level === 2){
+      if(view.obj === "hat") return bodyHat2();
+      if(view.obj === "sandwich") return bodySandwich2();
+      if(view.obj === "basket") return bodyBasket2();
+    }
+    return { hat:bodyHat1, guitar:bodyGuitar, sandwich:bodySandwich1, basket:bodyBasket1, grape:bodyGrape }[view.obj]();
+  }
+
+  function render(anim){
+    cardTitle.innerHTML = headTitle();
+    backBtn.hidden = !(view.level === 2);
+    cardBody.innerHTML = bodyHTML();
+    if(anim){
+      cardBody.classList.remove("in");
+      void cardBody.offsetWidth;
+      cardBody.classList.add("in");
+    }
+    if(view.obj === "mail"){
+      var f = document.getElementById("msgForm");
+      if(f) f.addEventListener("submit", onMsgSubmit);
+    }
+    mailFab.classList.toggle("active", view.obj === "mail" && !card.hidden);
+    setHover(null);
+    placeCard();
+  }
+
+  function setView(obj, level, sub, opts){
+    var first = card.hidden;
+    view = { obj:obj, level:level, sub:sub==null?null:sub };
+    card.hidden = false;
+    stage.classList.add("blurred");
+    if(first){
+      render(false);
+    } else {
+      cardBody.classList.add("out");
+      setTimeout(function(){
+        cardBody.classList.remove("out");
+        render(true);
+        if(opts && opts.autodraw) startDraw();
+      }, 140);
+    }
+    if(opts && opts.autodraw && first) startDraw();
+  }
+
+  function closeCard(){
+    card.hidden = true;
+    stage.classList.remove("blurred");
+    view = { obj:null, level:1, sub:null };
+    bb = { stage:"idle", note:null };
+    mailFab.classList.remove("active");
+    setHover(null);
+  }
+
+  function placeCard(){
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var cw = card.offsetWidth, ch = card.offsetHeight;
+    card.style.left = Math.max(16, (W - cw) / 2) + "px";
+    card.style.top = Math.max(16, (H - ch) / 2) + "px";
+  }
+
+  /* ---- 盲盒动作 ---- */
+  function startDraw(){
+    bb.stage = "shaking";
+    bb.note = drawNote();
+    render(false);
+    setTimeout(function(){ bb.stage = "fruit"; render(true); }, 650);
+  }
+
+  /* ---- 事件 ---- */
+  SPOTS.forEach(function(s){
+    var el = els[s.key];
+    el.addEventListener("mouseenter", function(){ setHover(s.key); });
+    el.addEventListener("mouseleave", function(){ if(hovered === s.key) setHover(null); });
+    el.addEventListener("focus", function(){ setHover(s.key); });
+    el.addEventListener("blur", function(){ if(hovered === s.key) setHover(null); });
+    el.addEventListener("click", function(){
+      /* 彩蛋：葡萄（MBTI）无任何悬停提示，只有点中才跳卡片 */
+      setHover(null);
+      if(view.obj === s.key && !card.hidden){ closeCard(); return; }
+      if(s.key === "basket") bb = { stage:"idle", note:null };
+      setView(s.key, 1, null);
+    });
+  });
+
+  mailFab.addEventListener("click", function(){
+    if(view.obj === "mail" && !card.hidden){ closeCard(); return; }
+    setView("mail", 1, null);
+  });
+  closeBtn.addEventListener("click", closeCard);
+  backBtn.addEventListener("click", function(){
+    if(view.obj === "basket"){ bb = { stage: bb.note ? "fruit" : "idle" }; }
+    setView(view.obj, 1, null);
+  });
+
+  cardBody.addEventListener("click", function(e){
+    var v = e.target.closest(".s-value");
+    if(v){ copyValue(v); return; }
+    var t = e.target.closest("[data-act]");
+    if(!t) return;
+    var act = t.getAttribute("data-act");
+    if(act === "drill"){ setView(view.obj, 2, t.getAttribute("data-sub")); return; }
+    if(act === "bb-draw"){ startDraw(); return; }
+    if(act === "bb-open"){ setView("basket", 2, bb.note.id); return; }
+    if(act === "bb-again"){ setView("basket", 1, null, { autodraw:true }); return; }
+    if(act === "bb-reset"){ bb = { stage:"idle", note:null }; render(true); return; }
+  });
+
+  /* ---- 复制邮箱 / 微信 ---- */
+  function fallbackCopy(txt){
+    var ta = document.createElement("textarea");
+    ta.value = txt; ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.left = "-999px"; ta.style.top = "0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(err){}
+    document.body.removeChild(ta);
+  }
+  function copyValue(el){
+    var txt = el.textContent.trim();
+    var row = el.closest(".social-row");
+    if(row && row.classList.contains("copied")) return;
+    var done = function(){
+      if(!row) return;
+      var old = el.textContent;
+      row.classList.add("copied");
+      el.textContent = "已复制 ✓";
+      setTimeout(function(){ row.classList.remove("copied"); el.textContent = old; }, 1100);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt); done(); });
+    } else { fallbackCopy(txt); done(); }
+  }
+
+  function onMsgSubmit(e){
+    e.preventDefault();
+    var nick = document.getElementById("msgNick").value.trim();
+    var text = document.getElementById("msgText").value.trim();
+    if(!nick || !text) return;
+    msgs.unshift({ nick:nick, text:text, time:nowStr() });
+    render(false);
+    cardBody.classList.add("in");
+  }
+
+  /* ---- 单屏拖拽平移（竖屏窄幅看全桌面） ---- */
+  var dragging = false, lastX = 0;
+  stage.addEventListener("pointerdown", function(e){
+    if(e.target.closest(".hs,.card,.mail-fab,.demo-tag,.pan-hint,button,input,textarea,form,a")) return;
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var scale = Math.max(W / IMG_W, H / IMG_H);
+    if(IMG_W * scale <= W + 4) return;
+    dragging = true; lastX = e.clientX;
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener("pointermove", function(e){
+    if(!dragging) return;
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var scale = Math.max(W / IMG_W, H / IMG_H);
+    var rw = IMG_W * scale;
+    pan.x = Math.min(1, Math.max(0, pan.x - (e.clientX - lastX) / (rw - W)));
+    lastX = e.clientX;
+    panHint.classList.add("gone");
+    layout();
+  });
+  ["pointerup","pointercancel"].forEach(function(ev){
+    stage.addEventListener(ev, function(){ dragging = false; });
+  });
+
+  window.addEventListener("resize", layout);
+  layout();
+})();
+</script>
+</body>
+</html>
