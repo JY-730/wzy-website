@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>衍 的小桌面 · Demo v0.5</title>
 <meta name="description" content="衍的个人网站 v3 设计验证 Demo：单屏满幅插画 + 物件悬停高亮 + 钻取卡片">
+<meta property="og:title" content="衍 的小桌面">
+<meta property="og:description" content="衍的个人网页：野餐桌面上的兴趣爱好、随笔盲盒、技能与关于我">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://arae7rff.qwenwork.host/assets/picnic-scene.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23F5821F'/><text x='32' y='45' font-size='34' text-anchor='middle' fill='%23FFFDF6' font-family='KaiTi,STKaiti,serif'>衍</text></svg>">
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <style>
   /* 手写体槽位：自托管文件 > local() 别名 > 免费手写回退 > 系统栈 */
@@ -253,15 +258,146 @@
     padding:8px 14px;font-size:14px;color:var(--ink);font-family:var(--font-body);resize:none;
   }
   .msg-form input:focus,.msg-form textarea:focus{outline:3px solid var(--orange-2);outline-offset:1px}
-  .msg-form .row{display:flex;gap:10px}
+  .msg-form .row{display:flex;gap:10px;align-items:center}
   .msg-form .row input{flex:1;min-width:0}
   .msg-list{list-style:none;margin-top:14px;display:grid;gap:10px}
-  .msg-item{background:var(--cream);border:3px solid var(--peach);border-radius:16px;padding:10px 14px;animation:pop .3s var(--spring)}
+  .msg-item{
+    background:var(--cream);border:3px solid var(--peach);border-radius:16px;padding:10px 14px;
+    animation:pop .3s var(--spring);
+    transition:transform .18s var(--spring),box-shadow .18s ease,border-color .18s ease;
+  }
+  /* 悬停浮动：抬起 + 投影 + 描边点亮（配色沿用站内 --orange / --peach） */
+  .msg-item:hover{
+    transform:translateY(-5px);
+    box-shadow:0 10px 22px rgba(59,42,32,.15);
+    border-color:var(--orange);
+  }
+  .msg-item:hover .m-nick{color:var(--brick)}
+  .msg-item:hover .msg-reply{border-left-color:var(--brick)}
   .msg-item .m-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
-  .msg-item .m-nick{font-family:var(--font-round);color:var(--orange);font-size:15px}
+  .msg-item .m-left{display:inline-flex;align-items:center;gap:6px;min-width:0}
+  .msg-item .m-nick{font-family:var(--font-round);color:var(--orange);font-size:15px;transition:color .18s ease}
+  /* 被隐藏的留言：仅站主可见，用虚线框 + 降透明度区分 */
+  .msg-item.hidden-msg{
+    border-style:dashed;border-color:var(--muted);background:var(--paper);opacity:.62;
+  }
+  .msg-item.hidden-msg:hover{border-color:var(--muted);box-shadow:0 8px 18px rgba(59,42,32,.10)}
+  .msg-item.hidden-msg .m-nick{color:var(--muted)}
+  .m-hidden-tag{
+    font-size:10px;color:var(--paper);background:var(--muted);
+    border-radius:999px;padding:1px 7px;white-space:nowrap;flex:none;
+  }
   .msg-item .m-time{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:4px}
   .msg-item .m-time .lic{width:11px;height:11px}
-  .msg-item .m-text{font-size:13px;margin-top:2px}
+  .msg-item .m-text{font-size:13px;margin-top:2px;word-break:break-word}
+
+  /* ---------- 留言板 v2：自建微数据库后端 ---------- */
+  .fab-badge{
+    position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;
+    border-radius:999px;background:var(--orange);color:var(--paper);
+    font-size:11px;line-height:16px;text-align:center;padding:0 5px;
+    border:2px solid var(--paper);font-family:var(--font-body);
+    transform:scale(0);transition:transform .22s var(--spring);
+  }
+  .fab-badge.show{transform:scale(1)}
+  .msg-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .msg-count{font-size:12px;color:var(--muted)}
+  .msg-counter{font-size:12px;color:var(--muted);text-align:right}
+  .msg-counter.over{color:var(--brick);font-weight:bold}
+  .btn[disabled]{opacity:.55;cursor:not-allowed;transform:none!important}
+  .msg-reply{
+    margin-top:8px;padding:8px 12px;border-radius:12px;
+    background:var(--paper);border-left:4px solid var(--orange);
+    font-size:12.5px;color:var(--ink);line-height:1.7;
+    transition:border-left-color .18s ease;
+  }
+  .msg-reply b{color:var(--orange);font-family:var(--font-round)}
+  .msg-actions{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .msg-like{
+    display:inline-flex;align-items:center;gap:5px;
+    border:2px solid var(--peach);background:transparent;border-radius:999px;
+    padding:2px 12px;font-size:12px;color:var(--muted);cursor:pointer;
+    font-family:var(--font-body);
+    transition:transform .12s ease,color .12s ease,border-color .12s ease;
+  }
+  .msg-like .lic{width:13px;height:13px}
+  .msg-like:hover{transform:scale(1.06);color:var(--brick);border-color:var(--brick)}
+  .msg-like.liked{color:var(--brick);border-color:var(--brick);cursor:default}
+  .msg-like.pop{animation:likePop .3s var(--spring)}
+  @keyframes likePop{0%{scale:.6}70%{scale:1.2}100%{scale:1}}
+
+  /* ---------- 站主管理模式 ---------- */
+  .own-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+  .own-chip{
+    display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex:none;
+    background:var(--orange);color:var(--paper);border-radius:999px;
+    padding:2px 10px;font-size:11px;font-family:var(--font-round);
+  }
+  .own-chip .lic{width:13px;height:13px;flex:none}
+  .own-exit{
+    border:none;background:transparent;color:var(--muted);cursor:pointer;
+    font-size:12px;font-family:var(--font-body);text-decoration:underline;
+  }
+  .own-exit:hover{color:var(--brick)}
+  .own-mini{
+    border:2px solid var(--peach);background:transparent;border-radius:999px;
+    padding:2px 12px;font-size:12px;color:var(--muted);cursor:pointer;
+    font-family:var(--font-body);transition:color .12s ease,border-color .12s ease;
+  }
+  .own-mini:hover{color:var(--orange);border-color:var(--orange)}
+  .own-mini.danger:hover{color:var(--brick);border-color:var(--brick)}
+  .own-pw{
+    margin:0;padding:12px 14px;border:3px dashed var(--peach);border-radius:16px;
+    background:var(--cream);
+  }
+  .own-pw p{font-size:12.5px;color:var(--muted);margin-bottom:8px;line-height:1.6}
+  .own-pw .row{display:flex;gap:8px}
+  .own-pw input{
+    flex:1;min-width:0;border:3px solid var(--peach);border-radius:12px;
+    padding:8px 10px;font-family:var(--font-body);font-size:13px;background:var(--paper);
+  }
+  .own-pw input:focus{outline:3px solid var(--orange-2);outline-offset:1px}
+  .own-err{color:var(--brick)!important}
+  .own-denied{
+    margin-top:8px;padding:10px 12px;border:3px dashed var(--peach);
+    border-radius:14px;background:var(--cream);font-size:12.5px;color:var(--muted);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+  }
+  .own-acts{display:flex;gap:8px;margin-top:8px}
+  .own-reply-box{margin-top:8px}
+  .own-reply-box textarea{
+    width:100%;box-sizing:border-box;border:3px solid var(--peach);border-radius:12px;
+    padding:8px 10px;font-family:var(--font-body);font-size:12.5px;background:var(--paper);
+    color:var(--ink);resize:vertical;
+  }
+  .own-reply-box textarea:focus{outline:3px solid var(--orange-2);outline-offset:1px}
+  .own-reply-box .row{display:flex;gap:8px;margin-top:6px;align-items:center}
+  .msg-more{
+    width:100%;margin-top:12px;background:transparent;color:var(--muted);
+    border:3px dashed var(--peach);border-radius:14px;padding:8px;
+    font-family:var(--font-round);font-size:14px;cursor:pointer;
+  }
+  .msg-more:hover{color:var(--orange);border-color:var(--orange)}
+  .msg-empty,.msg-loading,.msg-notice{
+    list-style:none;text-align:center;color:var(--muted);font-size:13px;
+    padding:22px 12px;border:3px dashed var(--peach);border-radius:16px;
+  }
+  .msg-notice{border-color:var(--brick);color:var(--brick);text-align:left;font-size:12.5px;line-height:1.9}
+  .msg-notice code{
+    background:var(--cream);border-radius:6px;padding:1px 6px;
+    font-family:Consolas,Menlo,monospace;font-size:12px;
+  }
+  .msg-toast{
+    position:absolute;left:50%;bottom:88px;transform:translate(-50%,10px);
+    z-index:60;background:var(--ink);color:var(--paper);
+    border-radius:999px;padding:8px 20px;font-size:13.5px;
+    font-family:var(--font-round);letter-spacing:.04em;
+    opacity:0;pointer-events:none;
+    transition:opacity .25s ease,transform .25s var(--spring);
+    max-width:calc(100vw - 48px);text-align:center;
+  }
+  .msg-toast.show{opacity:.96;transform:translate(-50%,0)}
+  .msg-toast.err{background:var(--brick)}
 
   .social-list{display:grid;gap:10px}
   .social-row{
@@ -339,7 +475,7 @@
     <div class="card-body" id="cardBody"></div>
   </div>
 
-  <div class="demo-tag"><b>DEMO v0.5</b> · 文案已替换为真实资料 · 留言为本地演示</div>
+  <div class="demo-tag"><b>DEMO v0.5</b> · 文案已替换为真实资料 · 留言板 v2</div>
   <div class="pan-hint" id="panHint" hidden>← 左右拖动画布 · 看全整张桌面 →</div>
 </div>
 
@@ -360,7 +496,8 @@
     tv:'<rect width="20" height="15" x="2" y="7" rx="2"/><polyline points="17 2 12 7 7 2"/>',
     clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     chat:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-    camera:'<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>'
+    camera:'<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0-2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    heart:'<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'
   };
   function icon(name){
     return '<svg class="lic" viewBox="0 0 24 24" aria-hidden="true">'+LIC[name]+'</svg>';
@@ -387,6 +524,128 @@
     { icon:"mail", name:"邮箱", value:"3175723297@qq.com" },
     { icon:"chat", name:"微信", value:"BDYQ45" }
   ];
+
+  /* ================= 留言板 · 自建微数据库配置（已接好，无需再改） =================
+     后端地址（已上线）：https://yan-microdb.app.workbuddy.host
+     数据存在后端自己的库里，不在访客浏览器，换设备、清缓存都不丢。
+     如需换成自己部署的后端，只改下面这一行地址即可，其余代码不用动。      */
+  var API_BASE = "https://yan-microdb.app.workbuddy.host";
+  var PAGE_SIZE = 10;          // 每页留言数
+  var RATE_LIMIT_MS = 60000;   // 同一浏览器两次留言最小间隔（前端提示，后端另有 IP 限流兜底）
+  var OWNER_NAME = "衍";        // 站主昵称：在昵称栏填它并直接回车，进入管理模式
+
+  /* ================= 留言板 · 数据层 ================= */
+  var LS = { read:"yan_msg_read", sent:"yan_msg_sent_at", liked:"yan_msg_liked", owner:"yan_owner" };
+  function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+
+  var store = { ready:false, error:"" };
+
+  /* 管理模式状态：token 只用于向自己的后端证明身份，密码本身从不落地在页面 */
+  var owner = { token:"", on:false, asking:false, err:"", busy:false };
+  (function restoreOwner(){
+    var raw = lsGet(LS.owner);
+    if(!raw) return;
+    try{
+      var o = JSON.parse(raw);
+      if(o && o.token && o.exp > Date.now()){ owner.token = o.token; owner.on = true; }
+      else lsDel(LS.owner);
+    }catch(e){ lsDel(LS.owner); }
+  })();
+
+  function initStore(){
+    if(!API_BASE){ store.error = "unconfigured"; return false; }
+    store.ready = true;
+    return true;
+  }
+  /* 降级执行：失败不影响主流程（如置顶区失败不该拖垮整个列表） */
+  function attempt(fn, fallback){
+    try{ return Promise.resolve(fn()).catch(function(){ return fallback; }); }
+    catch(e){ return Promise.resolve(fallback); }
+  }
+  /* ---- HTTP 封装：统一超时、错误转换 ---- */
+  function apiFetch(path, opts){
+    opts = opts || {};
+    var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 12000) : null;
+    var headers = { "Content-Type": "application/json" };
+    if(opts.auth && owner.token){
+      /* X-Auth-Token 为主：CDN 网关会注入自己的 Authorization 头，服务端不能只认它。
+         两个头都发，本机版（只认 Authorization）与线上版都能用同一份前端。 */
+      headers["X-Auth-Token"] = owner.token;
+      headers["Authorization"] = "Bearer " + owner.token;
+    }
+    var init = {
+      method: opts.method || "GET",
+      headers: headers
+    };
+    if(opts.body) init.body = JSON.stringify(opts.body);
+    if(ctl) init.signal = ctl.signal;
+    return fetch(API_BASE + path, init).then(function(res){
+      if(timer) clearTimeout(timer);
+      return res.json().catch(function(){ return {}; }).then(function(data){
+        if(!res.ok){
+          var err = new Error((data && data.error) || ("请求失败（" + res.status + "）"));
+          err.code = res.status;
+          /* 管理会话失效：退出管理模式，避免界面停在不可用的状态 */
+          if(res.status === 401 && opts.auth) exitOwner("登录已过期，请重新验证");
+          throw err;
+        }
+        return data;
+      });
+    }).catch(function(err){
+      if(timer) clearTimeout(timer);
+      if(err && err.name === "AbortError"){ var e = new Error("请求超时，请检查网络"); e.code = 100; throw e; }
+      if(err && err.code) throw err;
+      var e2 = new Error("网络连接失败，请稍后重试"); e2.code = 100; throw e2;
+    });
+  }
+  function fetchMessages(page){
+    /* 管理模式下多带一个参数，让列表把被隐藏的留言也返回（否则隐藏后自己也无法恢复） */
+    var q = "/api/messages?page=" + page + (owner.on ? "&includeHidden=1" : "");
+    return apiFetch(q, { auth: owner.on }).then(function(d){ return d.items || []; });
+  }
+  function countMessages(){
+    return apiFetch("/api/count").then(function(d){ return d.total || 0; });
+  }
+  function saveMessage(nick, text){
+    return apiFetch("/api/messages", { method:"POST", body:{ nick:nick, text:text } });
+  }
+  function likeMessage(id){
+    return apiFetch("/api/messages/" + encodeURIComponent(id) + "/like", { method:"POST" });
+  }
+  function msgPlain(o){
+    return {
+      id:o.id,
+      nick:o.nick || "匿名",
+      text:o.text || "",
+      likes:o.likes || 0,
+      reply:o.reply || "",
+      hidden:!!o.hidden,
+      time:o.time ? new Date(o.time) : new Date()
+    };
+  }
+  function errText(err){
+    if(!err) return "网络异常，请稍后重试";
+    if(err.code === 100) return "网络连接失败，检查网络后重试";
+    return err.message || "操作失败，请稍后重试";
+  }
+
+  /* ================= 留言板 · 本地状态（角标 / 限流 / 点赞去重） ================= */
+  function rateLimited(){
+    var last = parseInt(lsGet(LS.sent) || "0", 10) || 0;
+    return (Date.now() - last) < RATE_LIMIT_MS;
+  }
+  function markSent(){ lsSet(LS.sent, String(Date.now())); }
+  function likedIds(){
+    try{ return JSON.parse(lsGet(LS.liked) || "[]"); }catch(e){ return []; }
+  }
+  function isLiked(id){ return likedIds().indexOf(id) !== -1; }
+  function markLiked(id){
+    var ids = likedIds();
+    if(ids.indexOf(id) === -1){ ids.push(id); lsSet(LS.liked, JSON.stringify(ids)); }
+  }
 
   /* 底图真实像素尺寸 = assets/picnic-scene.png 的 1248×832（cover 裁切由 JS 换算） */
   var IMG_W = 1248, IMG_H = 832;
@@ -563,6 +822,7 @@
 
   var view = { obj:null, level:1, sub:null };   // obj: spot key | "mail"
   var bb = { stage:"idle", note:null };
+  var mail = { page:0, total:-1, loading:false, sending:false, done:false };
 
   function headTitle(){
     if(view.obj === "mail") return icon("mail") + " 留言板";
@@ -597,7 +857,7 @@
     return '<div class="hobby-grid">' + HOBBIES.map(function(h){
       return '<div class="hobby-card'+(h.empty?' empty':'')+'"><div class="h-ico">'+h.ico+'</div><div class="h-name">'+esc(h.name)+'</div>'
         + (h.desc?'<div class="h-desc">'+esc(h.desc)+'</div>':'') + '</div>';
-    }).join("") + '</div>';
+      }).join("") + '</div>';
   }
   function bodySandwich1(){
     return '<div class="sandwich"><div class="bread"></div>'
@@ -637,19 +897,434 @@
       + '<p class="mbti-tag">🍇 被你找到了 —— 这里是藏在桌角的彩蛋</p>';
   }
 
-  var msgs = [];
-  function pad(n){ return n < 10 ? "0"+n : ""+n; }
-  function nowStr(){
-    var d = new Date();
-    return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes());
+  /* ================= 留言板 v2 ================= */
+  function fmtTime(d){
+    var now = new Date();
+    var diff = (now.getTime() - d.getTime()) / 1000;
+    if(diff < 60) return "刚刚";
+    if(diff < 3600) return Math.floor(diff / 60) + " 分钟前";
+    if(diff < 86400) return Math.floor(diff / 3600) + " 小时前";
+    /* 超过一天：显示留言当天的日期，如 2026.10.11 */
+    var p = function(n){ return n < 10 ? "0" + n : String(n); };
+    return d.getFullYear() + "." + p(d.getMonth() + 1) + "." + p(d.getDate());
   }
+
+  function ownerPanelHTML(){
+    if(owner.asking){
+      return '<form class="own-pw" id="ownForm">'
+        + '<p>识别到站主昵称。请输入管理密码，验证后可在线上直接回复留言。</p>'
+        + '<div class="row">'
+        +   '<input id="ownPw" type="password" placeholder="管理密码" autocomplete="current-password" aria-label="管理密码">'
+        +   '<button class="btn" type="submit" id="ownGo">' + icon("send") + '进入</button>'
+        + '</div>'
+        + (owner.err ? '<p class="own-err">' + esc(owner.err) + '</p>'
+                     : '<p>密码只在服务端校验，不写在本页代码里。</p>')
+        + '</form>'
+        + '<div class="own-acts"><button class="own-mini" type="button" id="ownCancel">返回留言</button></div>';
+    }
+    if(owner.on){
+      return '<div class="own-bar"><span class="own-chip">' + icon("sparkles") + '管理模式</span>'
+        + '<button class="own-exit" type="button" id="ownExit">退出管理模式</button></div>';
+    }
+    return "";
+  }
+
   function bodyMail(){
-    return '<form class="msg-form" id="msgForm"><div class="row"><input id="msgNick" type="text" maxlength="20" placeholder="你的昵称" required aria-label="昵称">'
-      + '<button class="btn" type="submit">'+icon("send")+'留下</button></div>'
-      + '<textarea id="msgText" rows="2" maxlength="300" placeholder="想对 衍 说点什么…" required aria-label="留言内容"></textarea></form>'
-      + '<ul class="msg-list" id="msgList">' + msgs.map(function(m){
-          return '<li class="msg-item"><div class="m-head"><span class="m-nick">'+esc(m.nick)+'</span><span class="m-time">'+icon("clock")+esc(m.time)+'</span></div><div class="m-text">'+esc(m.text)+'</div></li>';
-        }).join("") + '</ul>';
+    if(!store.ready){
+      var why = store.error === "unconfigured"
+        ? "尚未配置微数据库接口地址"
+        : "留言服务初始化失败（" + esc(store.error) + "）";
+      return '<div class="msg-notice">留言板暂不可用：' + why + '。<br>'
+        + '请打开本页源码，找到 <code>API_BASE</code>，填入你自建微数据库的接口地址后重新上传即可启用。</div>';
+    }
+    /* 管理密码阶段：隐藏留言表单，只留验证面板 */
+    var form = owner.asking ? "" :
+      '<form class="msg-form" id="msgForm">'
+      + '<div class="row"><input id="msgNick" type="text" maxlength="20" placeholder="你的昵称" aria-label="昵称">'
+      + '<button class="btn" type="submit" id="msgSubmit">' + icon("send") + '留下</button></div>'
+      + '<textarea id="msgText" rows="2" maxlength="300" placeholder="想对 ' + esc(OWNER_NAME) + ' 说点什么…" aria-label="留言内容"></textarea>'
+      + '<div class="msg-counter" id="msgCounter">0 / 300</div>'
+      + '</form>';
+    return form
+      + ownerPanelHTML()
+      + '<div class="msg-top"><span class="msg-count" id="msgCount"></span></div>'
+      + '<ul class="msg-list" id="msgList"></ul>'
+      + '<button class="msg-more" id="msgMore" hidden>加载更多</button>';
+  }
+
+  function mountMail(){
+    if(!store.ready) return;
+    var f = document.getElementById("msgForm");
+    if(f) f.addEventListener("submit", onMsgSubmit);
+    var ta = document.getElementById("msgText");
+    if(ta) ta.addEventListener("input", updateCounter);
+    var opf = document.getElementById("ownForm");
+    if(opf) opf.addEventListener("submit", onOwnerLogin);
+    var oc = document.getElementById("ownCancel");
+    if(oc) oc.addEventListener("click", function(){ owner.asking = false; owner.err = ""; render(true); });
+    var oe = document.getElementById("ownExit");
+    if(oe) oe.addEventListener("click", function(){ exitOwner("已退出管理模式"); });
+    var more = document.getElementById("msgMore");
+    if(more) more.addEventListener("click", function(){ loadMailPage(mail.page + 1); });
+    updateCounter();
+    reloadMail();
+    if(owner.asking){
+      var pw = document.getElementById("ownPw");
+      if(pw) pw.focus();
+    }
+  }
+  function updateCounter(){
+    var ta = document.getElementById("msgText"), c = document.getElementById("msgCounter");
+    if(!ta || !c) return;
+    var n = ta.value.length;
+    c.textContent = n + " / 300";
+    c.classList.toggle("over", n >= 300);
+  }
+  function setCountText(){
+    var el = document.getElementById("msgCount");
+    if(el) el.textContent = mail.total > 0 ? ("共 " + mail.total + " 条留言") : "";
+  }
+  function reloadMail(){
+    mail.page = 0; mail.items = []; mail.done = false;
+    var list = document.getElementById("msgList");
+    if(list) list.innerHTML = "";
+    var more = document.getElementById("msgMore");
+    if(more) more.hidden = true;
+    loadMailPage(0);
+  }
+  function loadMailPage(page){
+    if(mail.loading || mail.done) return;
+    mail.loading = true;
+    var list = document.getElementById("msgList");
+    var more = document.getElementById("msgMore");
+    var loading = document.createElement("li");
+    loading.className = "msg-loading";
+    loading.textContent = "翻找留言中…";
+    if(list && list.children.length === 0) list.appendChild(loading);
+    var jobs = [ fetchMessages(page) ];
+    if(page === 0) jobs.push(attempt(countMessages, -1));
+    Promise.all(jobs).then(function(res){
+      var raw = res[0] || [];
+      var total = page === 0 ? res[1] : mail.total;
+      mail.total = total;
+      mail.page = page;
+      if(list && loading.parentNode === list) list.removeChild(loading);
+      /* 留言按时间顺序展示；有站主回复的，回复框内联显示在该条下方 */
+      if(raw.length === 0 && page === 0){
+        var empty = document.createElement("li");
+        empty.className = "msg-empty";
+        empty.textContent = "还没有留言，来抢沙发。";
+        list.appendChild(empty);
+      } else {
+        raw.forEach(function(o){ list.appendChild(msgItemEl(msgPlain(o), false)); });
+      }
+      if(more) more.hidden = raw.length < PAGE_SIZE;
+      /* 本页是否已取完：raw 未满一页说明后端已无更多数据 */
+      mail.done = raw.length < PAGE_SIZE;
+      mail.loading = false;
+      setCountText();
+      if(page === 0 && mail.total >= 0){
+        badgeTotal = mail.total;
+        markBadgeRead();
+      }
+      placeCard();
+    }).catch(function(err){
+      if(list && loading.parentNode === list) list.removeChild(loading);
+      if(list){
+        var e = document.createElement("li");
+        e.className = "msg-notice";
+        e.textContent = "留言加载失败：" + errText(err);
+        list.appendChild(e);
+      }
+      if(more) more.hidden = true;
+      mail.loading = false;
+    });
+  }
+  function msgItemEl(m, pinned){
+    var li = document.createElement("li");
+    li.className = "msg-item" + (m.hidden ? " hidden-msg" : "");
+    var head = document.createElement("div");
+    head.className = "m-head";
+    var left = document.createElement("span");
+    left.className = "m-left";
+    var nick = document.createElement("span");
+    nick.className = "m-nick";
+    nick.textContent = m.nick;
+    left.appendChild(nick);
+    if(m.hidden){
+      var tag = document.createElement("span");
+      tag.className = "m-hidden-tag";
+      tag.textContent = "已隐藏";
+      left.appendChild(tag);
+    }
+    var time = document.createElement("span");
+    time.className = "m-time";
+    time.innerHTML = icon("clock") + esc(fmtTime(m.time));
+    head.appendChild(left);
+    head.appendChild(time);
+    li.appendChild(head);
+    var text = document.createElement("div");
+    text.className = "m-text";
+    text.textContent = m.text;
+    li.appendChild(text);
+    if(m.reply){
+      var r = document.createElement("div");
+      r.className = "msg-reply";
+      r.innerHTML = "<b>衍 回复：</b>" + esc(m.reply);
+      li.appendChild(r);
+    }
+    var act = document.createElement("div");
+    act.className = "msg-actions";
+    var like = document.createElement("button");
+    like.className = "msg-like" + (isLiked(m.id) ? " liked" : "");
+    like.type = "button";
+    like.title = isLiked(m.id) ? "已赞过" : "点个赞";
+    like.innerHTML = icon("heart") + '<span class="lk-n">' + m.likes + "</span>";
+    like.addEventListener("click", function(){ onLike(m.id, like); });
+    act.appendChild(like);
+    li.appendChild(act);
+
+    /* 管理模式：每条留言下方多出「回复 / 隐藏 / 删除」 */
+    if(owner.on){
+      var own = document.createElement("div");
+      own.className = "own-acts";
+      var rb = document.createElement("button");
+      rb.type = "button";
+      rb.className = "own-mini";
+      rb.textContent = m.reply ? "改回复" : "回复";
+      rb.addEventListener("click", function(){ openReplyEditor(li, m); });
+      var hb = document.createElement("button");
+      hb.type = "button";
+      hb.className = "own-mini";
+      hb.textContent = m.hidden ? "恢复显示" : "隐藏";
+      hb.title = m.hidden ? "让这条留言重新对访客可见" : "从访客列表里收起这条留言";
+      hb.addEventListener("click", function(){ ownerToggleHidden(m, hb); });
+      var db = document.createElement("button");
+      db.type = "button";
+      db.className = "own-mini danger";
+      db.textContent = "删除";
+      db.addEventListener("click", function(){ ownerDelete(m, li); });
+      own.appendChild(rb);
+      own.appendChild(hb);
+      own.appendChild(db);
+      li.appendChild(own);
+    }
+    return li;
+  }
+
+  /* ---- 管理模式动作 ---- */
+  function exitOwner(msg){
+    if(owner.token){
+      /* 通知服务端作废会话，失败也不影响本地退出 */
+      apiFetch("/api/owner/logout", { method:"POST", auth:true }).catch(function(){});
+    }
+    owner = { token:"", on:false, asking:false, err:"", busy:false };
+    lsDel(LS.owner);
+    if(msg) showToast(msg, true);
+    if(view.obj === "mail" && !card.hidden) render(true);
+  }
+  function onOwnerLogin(e){
+    e.preventDefault();
+    if(owner.busy) return;
+    var pwEl = document.getElementById("ownPw");
+    var pw = pwEl ? pwEl.value : "";
+    if(!pw){ owner.err = "请输入管理密码"; render(true); return; }
+    owner.busy = true;
+    var btn = document.getElementById("ownGo");
+    if(btn){ btn.disabled = true; btn.className = "btn"; btn.textContent = "验证中…"; }
+    apiFetch("/api/owner/login", { method:"POST", body:{ password: pw } }).then(function(d){
+      owner.busy = false;
+      owner.token = d.token;
+      owner.on = true;
+      owner.asking = false;
+      owner.err = "";
+      lsSet(LS.owner, JSON.stringify({ token:d.token, exp:d.expiresAt }));
+      showToast("已进入管理模式");
+      render(true);
+    }).catch(function(err){
+      owner.busy = false;
+      owner.err = errText(err);
+      render(true);
+    });
+  }
+  function openReplyEditor(li, m){
+    if(li.querySelector(".own-reply-box")) return;
+    var box = document.createElement("div");
+    box.className = "own-reply-box";
+    var form = document.createElement("form");
+    var ta = document.createElement("textarea");
+    ta.rows = 2;
+    ta.maxLength = 200;
+    ta.placeholder = "回复 " + m.nick + "…";
+    ta.value = m.reply || "";
+    ta.setAttribute("aria-label", "回复内容");
+    var row = document.createElement("div");
+    row.className = "row";
+    var save = document.createElement("button");
+    save.type = "submit";
+    save.className = "btn";
+    save.textContent = "保存回复";
+    var cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "own-mini";
+    cancel.textContent = "取消";
+    row.appendChild(save);
+    row.appendChild(cancel);
+    form.appendChild(ta);
+    form.appendChild(row);
+    box.appendChild(form);
+    form.addEventListener("submit", function(e){
+      e.preventDefault();
+      var val = (ta.value || "").trim();
+      /* 原本没有回复又留空 → 提示；原本有回复但清空 → 确认后撤销 */
+      if(!val){
+        if(!m.reply){ showToast("回复内容不能为空", true); return; }
+        if(!window.confirm("清空内容并撤销这条回复？")) return;
+      }
+      save.disabled = true;
+      save.textContent = "保存中…";
+      apiFetch("/api/owner/messages/" + encodeURIComponent(m.id) + "/reply",
+        { method:"POST", auth:true, body:{ reply: val } }
+      ).then(function(){
+        showToast(val ? "回复已保存" : "回复已撤销");
+        reloadMail();
+      }).catch(function(err){
+        save.disabled = false;
+        save.textContent = "保存回复";
+        showToast(errText(err), true);
+      });
+    });
+    cancel.addEventListener("click", function(){ box.remove(); });
+    li.appendChild(box);
+    ta.focus();
+  }
+  function ownerDelete(m, li){
+    if(!window.confirm("确定删除「" + m.nick + "」的这条留言？删除后无法恢复。")) return;
+    apiFetch("/api/owner/messages/" + encodeURIComponent(m.id),
+      { method:"DELETE", auth:true }
+    ).then(function(){
+      showToast("已删除");
+      li.remove();
+    }).catch(function(err){
+      showToast(errText(err), true);
+    });
+  }
+  function ownerToggleHidden(m, btn){
+    var next = m.hidden ? "approved" : "pending";
+    if(!m.hidden && !window.confirm("隐藏这条留言？访客将看不到它，你仍可在管理模式里恢复。")) return;
+    btn.disabled = true;
+    apiFetch("/api/owner/messages/" + encodeURIComponent(m.id) + "/status",
+      { method:"POST", auth:true, body:{ status: next } }
+    ).then(function(){
+      showToast(m.hidden ? "已恢复显示" : "已隐藏");
+      reloadMail();
+    }).catch(function(err){
+      btn.disabled = false;
+      showToast(errText(err), true);
+    });
+  }
+  function onLike(id, btn){
+    if(isLiked(id)){ showToast("这条已经赞过啦"); return; }
+    var numEl = btn.querySelector(".lk-n");
+    var old = parseInt(numEl.textContent, 10) || 0;
+    numEl.textContent = old + 1;
+    btn.classList.add("liked", "pop");
+    markLiked(id);
+    likeMessage(id).catch(function(){
+      numEl.textContent = old;
+      btn.classList.remove("liked", "pop");
+      showToast("点赞失败，稍后再试", true);
+    });
+  }
+  function onMsgSubmit(e){
+    e.preventDefault();
+    if(mail.sending) return;
+    var nickEl = document.getElementById("msgNick");
+    var textEl = document.getElementById("msgText");
+    var nick = nickEl.value.trim();
+    var text = textEl.value.trim();
+
+    /* 站主入口：昵称填「衍」、内容留空直接回车 → 进入管理模式验证 */
+    if(nick === OWNER_NAME && !text){
+      owner.asking = true;
+      owner.err = "";
+      render(true);
+      return;
+    }
+    if(owner.asking) return;
+
+    if(!nick || !text){ showToast("昵称和内容都要填哦", true); return; }
+    if(rateLimited()){ showToast("休息一下，60 秒后再发一条", true); return; }
+    mail.sending = true;
+    var btn = document.getElementById("msgSubmit");
+    btn.disabled = true;
+    btn.innerHTML = icon("clock") + "发送中…";
+    saveMessage(nick, text).then(function(){
+      mail.sending = false;
+      btn.disabled = false;
+      btn.innerHTML = icon("send") + "留下";
+      nickEl.value = ""; textEl.value = "";
+      updateCounter();
+      markSent();
+      showToast("留言成功，感谢 ✓");
+      reloadMail();
+    }).catch(function(err){
+      mail.sending = false;
+      btn.disabled = false;
+      btn.innerHTML = icon("send") + "留下";
+      showToast(errText(err), true);
+    });
+  }
+
+  /* ---- 留言角标（FAB 红点） ---- */
+  var badgeEl = null;
+  var badgeTotal = -1;
+  function ensureBadge(){
+    if(badgeEl) return badgeEl;
+    badgeEl = document.createElement("span");
+    badgeEl.className = "fab-badge";
+    badgeEl.setAttribute("aria-hidden", "true");
+    mailFab.appendChild(badgeEl);
+    return badgeEl;
+  }
+  function refreshBadge(){
+    ensureBadge();
+    var mailOpen = (view.obj === "mail" && !card.hidden);
+    if(!store.ready || badgeTotal < 0 || mailOpen){ badgeEl.classList.remove("show"); return; }
+    var read = parseInt(lsGet(LS.read) || "0", 10) || 0;
+    var unread = Math.max(0, badgeTotal - read);
+    if(unread > 0){
+      badgeEl.textContent = unread > 99 ? "99+" : String(unread);
+      badgeEl.classList.add("show");
+    } else {
+      badgeEl.classList.remove("show");
+    }
+  }
+  function markBadgeRead(){
+    if(badgeTotal >= 0) lsSet(LS.read, String(badgeTotal));
+    if(badgeEl) badgeEl.classList.remove("show");
+  }
+  function pollBadge(){
+    if(!store.ready) return;
+    countMessages().then(function(n){
+      badgeTotal = n;
+      refreshBadge();
+    }).catch(function(){});
+  }
+
+  /* ---- 轻提示 toast ---- */
+  var toastEl = null, toastTimer = null;
+  function showToast(text, isErr){
+    if(!toastEl){
+      toastEl = document.createElement("div");
+      toastEl.className = "msg-toast";
+      stage.appendChild(toastEl);
+    }
+    toastEl.textContent = text;
+    toastEl.classList.toggle("err", !!isErr);
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 2200);
   }
 
   function bodyHTML(){
@@ -671,10 +1346,7 @@
       void cardBody.offsetWidth;
       cardBody.classList.add("in");
     }
-    if(view.obj === "mail"){
-      var f = document.getElementById("msgForm");
-      if(f) f.addEventListener("submit", onMsgSubmit);
-    }
+    if(view.obj === "mail") mountMail();
     mailFab.classList.toggle("active", view.obj === "mail" && !card.hidden);
     setHover(null);
     placeCard();
@@ -683,6 +1355,9 @@
   function setView(obj, level, sub, opts){
     var first = card.hidden;
     view = { obj:obj, level:level, sub:sub==null?null:sub };
+    if(obj === "mail"){
+      mail = { page:0, total:-1, loading:false, sending:false, done:false };
+    }
     card.hidden = false;
     stage.classList.add("blurred");
     if(first){
@@ -703,8 +1378,14 @@
     stage.classList.remove("blurred");
     view = { obj:null, level:1, sub:null };
     bb = { stage:"idle", note:null };
+    mail = { page:0, total:-1, loading:false, sending:false, done:false };
+    /* 收起时清掉密码面板状态；已验证的登录态保留 */
+    owner.asking = false;
+    owner.err = "";
+    owner.busy = false;
     mailFab.classList.remove("active");
     setHover(null);
+    refreshBadge();
   }
 
   function placeCard(){
@@ -786,16 +1467,6 @@
     } else { fallbackCopy(txt); done(); }
   }
 
-  function onMsgSubmit(e){
-    e.preventDefault();
-    var nick = document.getElementById("msgNick").value.trim();
-    var text = document.getElementById("msgText").value.trim();
-    if(!nick || !text) return;
-    msgs.unshift({ nick:nick, text:text, time:nowStr() });
-    render(false);
-    cardBody.classList.add("in");
-  }
-
   /* ---- 单屏拖拽平移（竖屏窄幅看全桌面） ---- */
   var dragging = false, lastX = 0;
   stage.addEventListener("pointerdown", function(e){
@@ -822,6 +1493,13 @@
 
   window.addEventListener("resize", layout);
   layout();
+
+  /* ---- 留言板启动：初始化后端 + 角标轮询 ---- */
+  initStore();
+  ensureBadge();
+  refreshBadge();
+  pollBadge();
+  setInterval(pollBadge, 60000);
 })();
 </script>
 </body>
